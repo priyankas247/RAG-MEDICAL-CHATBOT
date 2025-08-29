@@ -10,6 +10,3 @@ DB_FAISS_PATH="vectorstore/db_faiss"
 DATA_PATH="data/"
 CHUNK_SIZE=300
 CHUNK_OVERLAP=30
-
-print("DEBUG -> HF_TOKEN:", HF_TOKEN)
-print("HF_repo:", HUGGINGFACE_REPO_ID)
