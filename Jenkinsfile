@@ -43,16 +43,17 @@ pipeline {
             sh """
                 docker run --rm \
                     -v /var/run/docker.sock:/var/run/docker.sock \
-                    -v \$PWD:/root \
+                    -v "${WORKSPACE}:/root" \
                     aquasec/trivy image \
                     --severity HIGH,CRITICAL \
                     --format json \
                     -o /root/trivy-report.json \
-                    ${ECR_REPO}:${IMAGE_TAG} || true
+                    "${ECR_REPO}:${IMAGE_TAG}" || true
             """
         }
     }
 }
+
 
 
         stage('Archive Trivy Report') {
