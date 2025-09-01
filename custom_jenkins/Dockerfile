@@ -1,25 +1,37 @@
 # Use the Jenkins image as the base image
 FROM jenkins/jenkins:lts
 
-# Switch to root user to install dependencies
+# Switch to root to install system dependencies
 USER root
 
-# Install prerequisites and Docker
-RUN apt-get update -y && \
-    apt-get install -y apt-transport-https ca-certificates curl gnupg software-properties-common && \
-    curl -fsSL https://download.docker.com/linux/debian/gpg | apt-key add - && \
+# Install Docker and AWS CLI
+RUN apt-get update && \
+    apt-get install -y \
+        apt-transport-https \
+        ca-certificates \
+        curl \
+        gnupg \
+        lsb-release \
+        unzip \
+        software-properties-common
+
+# Install Docker (same as before)
+RUN curl -fsSL https://download.docker.com/linux/debian/gpg | apt-key add - && \
     echo "deb [arch=amd64] https://download.docker.com/linux/debian bullseye stable" > /etc/apt/sources.list.d/docker.list && \
-    apt-get update -y && \
-    apt-get install -y docker-ce docker-ce-cli containerd.io && \
-    apt-get clean
+    apt-get update && \
+    apt-get install -y docker-ce docker-ce-cli containerd.io
 
-# Add Jenkins user to the Docker group (create if it doesn't exist)
-RUN groupadd -f docker && \
-    usermod -aG docker jenkins
+# Install AWS CLI v2
+RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" && \
+    unzip awscliv2.zip && \
+    ./aws/install && \
+    rm -rf aws awscliv2.zip
 
-# Create the Docker directory and volume for DinD
-RUN mkdir -p /var/lib/docker
+# Add Jenkins user to the docker group
+RUN groupadd -f docker && usermod -aG docker jenkins
+
+# Create Docker volume
 VOLUME /var/lib/docker
 
-# Switch back to the Jenkins user
+# Switch back to Jenkins user
 USER jenkins
