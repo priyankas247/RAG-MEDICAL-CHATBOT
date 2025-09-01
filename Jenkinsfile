@@ -37,18 +37,23 @@ pipeline {
         }
 
         stage('Trivy Scan') {
-            steps {
-                script {
-                    echo "Running Trivy scan..."
-                    sh """
-                        trivy image --severity HIGH,CRITICAL \
-                            --format json \
-                            -o trivy-report.json \
-                            ${ECR_REPO}:${IMAGE_TAG} || true
-                    """
-                }
-            }
+    steps {
+        script {
+            echo "Running Trivy scan..."
+            sh """
+                docker run --rm \
+                    -v /var/run/docker.sock:/var/run/docker.sock \
+                    -v \$PWD:/root \
+                    aquasec/trivy image \
+                    --severity HIGH,CRITICAL \
+                    --format json \
+                    -o /root/trivy-report.json \
+                    ${ECR_REPO}:${IMAGE_TAG} || true
+            """
         }
+    }
+}
+
 
         stage('Archive Trivy Report') {
             steps {
