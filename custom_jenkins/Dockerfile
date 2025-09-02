@@ -31,6 +31,7 @@ RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2
 RUN groupadd -f docker && usermod -aG docker jenkins
 
 # Create Docker volume
+RUN mkdir -p /var/lib/docker
 VOLUME /var/lib/docker
 
 # Switch back to Jenkins user
