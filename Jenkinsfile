@@ -42,10 +42,13 @@ pipeline {
             echo "Running Trivy scan..."
             sh """
                 docker run --rm \
+                    --name trivy-scan \
                     -v /var/run/docker.sock:/var/run/docker.sock \
                     -v "${WORKSPACE}:/root" \
                     aquasec/trivy image \
+                    --scanners vuln \
                     --severity HIGH,CRITICAL \
+                    -timeout 10m \
                     --format json \
                     -o /root/trivy-report.json \
                     "${ECR_REPO}:${IMAGE_TAG}" || true
