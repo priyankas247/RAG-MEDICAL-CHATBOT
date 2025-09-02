@@ -25,66 +25,44 @@ pipeline {
             }
         }
 
-        stage('Build Docker Image') {
-            steps {
-                script {
-                    echo "Building Docker image..."
-                    sh """
-                        docker build -t ${ECR_REPO}:${IMAGE_TAG} .
-                    """
-                }
-            }
-        }
-
-        stage('Trivy Scan') {
+        stage('Build, Scan, and Push Docker Image to ECR') {
     steps {
-        script {
-            echo "Running Trivy scan..."
-            sh """
-                docker run --rm \
-                    --name trivy-scan \
-                    -v /var/run/docker.sock:/var/run/docker.sock \
-                    -v "${WORKSPACE}:/root" \
-                    aquasec/trivy image \
-                    --scanners vuln \
-                    --severity HIGH,CRITICAL \
-                    -timeout 10m \
-                    --format json \
-                    -o /root/trivy-report.json \
-                    "${ECR_REPO}:${IMAGE_TAG}" || true
-            """
+        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-token']]) {
+            script {
+                def accountId = sh(script: "aws sts get-caller-identity --query Account --output text", returnStdout: true).trim()
+                def ecrUrl = "${accountId}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.ECR_REPO}"
+                def imageFullTag = "${ecrUrl}:${IMAGE_TAG}"
+
+                echo "🛠 Building Docker image: ${env.ECR_REPO}:${IMAGE_TAG}"
+                echo "🔍 Running Trivy scan..."
+                echo "🚀 Pushing Docker image to ECR: ${imageFullTag}"
+
+                sh """
+                    aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ecrUrl}
+
+                    docker build -t ${env.ECR_REPO}:${IMAGE_TAG} .
+
+                    docker run --rm \
+                        -v /var/run/docker.sock:/var/run/docker.sock \
+                        -v "\$PWD:/root" \
+                        aquasec/trivy image \
+                        --scanners vuln \
+                        --severity HIGH,CRITICAL \
+                        --timeout 10m \
+                        --format json \
+                        -o /root/trivy-report.json \
+                        ${env.ECR_REPO}:${IMAGE_TAG} || true
+
+                    docker tag ${env.ECR_REPO}:${IMAGE_TAG} ${imageFullTag}
+                    docker push ${imageFullTag}
+                """
+
+                archiveArtifacts artifacts: 'trivy-report.json', allowEmptyArchive: true
+            }
         }
     }
 }
 
-
-
-        stage('Archive Trivy Report') {
-            steps {
-                script {
-                    echo "Archiving Trivy report..."
-                    archiveArtifacts artifacts: 'trivy-report.json', allowEmptyArchive: true
-                }
-            }
-        }
-
-        stage('Push to ECR') {
-            steps {
-                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-token']]) {
-                    script {
-                        def accountId = sh(script: "aws sts get-caller-identity --query Account --output text", returnStdout: true).trim()
-                        def ecrUrl = "${accountId}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
-                        def imageFullTag = "${ecrUrl}:${IMAGE_TAG}"
-
-                        sh """
-                            aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ecrUrl}
-                            docker tag ${ECR_REPO}:${IMAGE_TAG} ${imageFullTag}
-                            docker push ${imageFullTag}
-                        """
-                    }
-                }
-            }
-        }
 
         // Optional Deployment Stage
         // stage('Deploy to AWS App Runner') {
