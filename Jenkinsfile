@@ -2,9 +2,9 @@ pipeline {
     agent any
 
     environment {
-        AWS_REGION = 'us-east-1'
-        ECR_REPO = 'my-repo'
-        IMAGE_TAG = 'latest'
+        AWS_REGION   = 'us-east-1'
+        ECR_REPO     = 'my-repo'
+        IMAGE_TAG    = 'latest'
         SERVICE_NAME = 'llmops-medical-service'
     }
 
@@ -30,8 +30,8 @@ pipeline {
                     credentialsId: 'aws-token'
                 ]]) {
                     script {
-                        def accountId = sh(script: "aws sts get-caller-identity --query Account --output text", returnStdout: true).trim()
-                        def ecrUrl = "${accountId}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.ECR_REPO}"
+                        def accountId   = sh(script: "aws sts get-caller-identity --query Account --output text", returnStdout: true).trim()
+                        def ecrUrl      = "${accountId}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.ECR_REPO}"
                         def imageFullTag = "${ecrUrl}:${IMAGE_TAG}"
 
                         sh """
@@ -41,19 +41,20 @@ pipeline {
                         echo "🐳 Building Docker image..."
                         docker build -t ${env.ECR_REPO}:${IMAGE_TAG} .
 
-                        echo "🔍 Scanning Docker image with Trivy..."
+                        echo "🔍 Running Trivy vulnerability scan..."
+                        mkdir -p ${WORKSPACE}/trivy
+
                         docker run --rm \
                             -v /var/run/docker.sock:/var/run/docker.sock \
-                            -v ${env.WORKSPACE}:${env.WORKSPACE} \
-                            -w ${env.WORKSPACE} \
+                            -v ${WORKSPACE}/trivy:/report \
                             aquasec/trivy image \
-                            --timeout 10m \
-                            --skip-db-update=false \
+                            --timeout 30m \
                             --scanners vuln \
                             --severity HIGH,CRITICAL \
                             --format json \
-                            -o trivy-report.json \
-                            ${env.ECR_REPO}:${IMAGE_TAG} || true
+                            -o /report/trivy-report.json \
+                            ${env.ECR_REPO}:${IMAGE_TAG} \
+                        || echo '{"error": "Trivy scan failed or timed out"}' > ${WORKSPACE}/trivy/trivy-report.json
 
                         echo "📦 Tagging and pushing Docker image..."
                         docker tag ${env.ECR_REPO}:${IMAGE_TAG} ${imageFullTag}
@@ -61,8 +62,8 @@ pipeline {
                         """
                     }
 
-                    // Archive report after `script` block
-                    archiveArtifacts artifacts: 'trivy-report.json', allowEmptyArchive: true
+                    // Archive Trivy report (always exists now)
+                    archiveArtifacts artifacts: 'trivy/trivy-report.json', allowEmptyArchive: false
                 }
             }
         }
@@ -72,8 +73,8 @@ pipeline {
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-token']]) {
                     script {
-                        def accountId = sh(script: "aws sts get-caller-identity --query Account --output text", returnStdout: true).trim()
-                        def ecrUrl = "${accountId}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.ECR_REPO}"
+                        def accountId   = sh(script: "aws sts get-caller-identity --query Account --output text", returnStdout: true).trim()
+                        def ecrUrl      = "${accountId}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.ECR_REPO}"
                         def imageFullTag = "${ecrUrl}:${IMAGE_TAG}"
 
                         echo "🚀 Triggering deployment to AWS App Runner..."
