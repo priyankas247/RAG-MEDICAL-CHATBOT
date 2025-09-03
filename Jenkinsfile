@@ -30,8 +30,8 @@ pipeline {
                     credentialsId: 'aws-token'
                 ]]) {
                     script {
-                        def accountId   = sh(script: "aws sts get-caller-identity --query Account --output text", returnStdout: true).trim()
-                        def ecrUrl      = "${accountId}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.ECR_REPO}"
+                        def accountId    = sh(script: "aws sts get-caller-identity --query Account --output text", returnStdout: true).trim()
+                        def ecrUrl       = "${accountId}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.ECR_REPO}"
                         def imageFullTag = "${ecrUrl}:${IMAGE_TAG}"
 
                         sh """
@@ -52,8 +52,11 @@ pipeline {
                             --scanners vuln \
                             --severity HIGH,CRITICAL \
                             --format json \
-                            -o trivy-report.json \
-                            ${env.ECR_REPO}:${IMAGE_TAG} || echo '{}' > trivy-report.json
+                            -o /workspace/trivy-report.json \
+                            ${env.ECR_REPO}:${IMAGE_TAG} || echo '{}' > /workspace/trivy-report.json
+
+                        echo "📂 Checking for report file..."
+                        ls -lh /workspace
 
                         echo "📦 Tagging and pushing Docker image..."
                         docker tag ${env.ECR_REPO}:${IMAGE_TAG} ${imageFullTag}
@@ -72,8 +75,8 @@ pipeline {
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-token']]) {
                     script {
-                        def accountId   = sh(script: "aws sts get-caller-identity --query Account --output text", returnStdout: true).trim()
-                        def ecrUrl      = "${accountId}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.ECR_REPO}"
+                        def accountId    = sh(script: "aws sts get-caller-identity --query Account --output text", returnStdout: true).trim()
+                        def ecrUrl       = "${accountId}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.ECR_REPO}"
                         def imageFullTag = "${ecrUrl}:${IMAGE_TAG}"
 
                         echo "🚀 Triggering deployment to AWS App Runner..."
