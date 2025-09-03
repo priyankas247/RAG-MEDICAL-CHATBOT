@@ -41,20 +41,19 @@ pipeline {
                         echo "🐳 Building Docker image..."
                         docker build -t ${env.ECR_REPO}:${IMAGE_TAG} .
 
-                        echo "🔍 Running Trivy vulnerability scan..."
-                        mkdir -p ${WORKSPACE}/trivy
-
+                        echo "🔍 Scanning Docker image with Trivy..."
                         docker run --rm \
                             -v /var/run/docker.sock:/var/run/docker.sock \
-                            -v ${WORKSPACE}/trivy:/report \
+                            -v ${env.WORKSPACE}:/workspace \
+                            -w /workspace \
                             aquasec/trivy image \
-                            --timeout 30m \
+                            --timeout 10m \
+                            --skip-db-update=false \
                             --scanners vuln \
                             --severity HIGH,CRITICAL \
                             --format json \
-                            -o /report/trivy-report.json \
-                            ${env.ECR_REPO}:${IMAGE_TAG} \
-                        || echo '{"error": "Trivy scan failed or timed out"}' > ${WORKSPACE}/trivy/trivy-report.json
+                            -o trivy-report.json \
+                            ${env.ECR_REPO}:${IMAGE_TAG} || true
 
                         echo "📦 Tagging and pushing Docker image..."
                         docker tag ${env.ECR_REPO}:${IMAGE_TAG} ${imageFullTag}
@@ -62,8 +61,8 @@ pipeline {
                         """
                     }
 
-                    // Archive Trivy report (always exists now)
-                    archiveArtifacts artifacts: 'trivy/trivy-report.json', allowEmptyArchive: false
+                    // Archive report after `script` block
+                    archiveArtifacts artifacts: 'trivy-report.json', allowEmptyArchive: true
                 }
             }
         }
