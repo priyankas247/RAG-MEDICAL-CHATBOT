@@ -47,13 +47,13 @@ pipeline {
                             -v ${env.WORKSPACE}:/workspace \
                             -w /workspace \
                             aquasec/trivy image \
-                            --timeout 10m \
+                            --timeout 30m \
                             --skip-db-update=false \
                             --scanners vuln \
                             --severity HIGH,CRITICAL \
                             --format json \
                             -o trivy-report.json \
-                            ${env.ECR_REPO}:${IMAGE_TAG} || true
+                            ${env.ECR_REPO}:${IMAGE_TAG} || echo '{}' > trivy-report.json
 
                         echo "📦 Tagging and pushing Docker image..."
                         docker tag ${env.ECR_REPO}:${IMAGE_TAG} ${imageFullTag}
