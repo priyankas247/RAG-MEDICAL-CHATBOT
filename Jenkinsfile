@@ -47,6 +47,8 @@ pipeline {
                             -v ${env.WORKSPACE}:${env.WORKSPACE} \
                             -w ${env.WORKSPACE} \
                             aquasec/trivy image \
+                            --timeout 10m \
+                            --skip-db-update=false \
                             --scanners vuln \
                             --severity HIGH,CRITICAL \
                             --format json \
