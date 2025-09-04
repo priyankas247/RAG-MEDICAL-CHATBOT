@@ -1,4 +1,4 @@
-pipeline {
+pipeline { 
     agent any
 
     environment {
@@ -25,7 +25,7 @@ pipeline {
 
         stage('Build, Scan, and Push Docker Image to ECR') {
             steps {
-                withCredentials([[
+                withCredentials([[ 
                     $class: 'AmazonWebServicesCredentialsBinding',
                     credentialsId: 'aws-token'
                 ]]) {
@@ -44,19 +44,19 @@ pipeline {
                         echo "🔍 Scanning Docker image with Trivy..."
                         docker run --rm \
                             -v /var/run/docker.sock:/var/run/docker.sock \
-                            -v ${env.WORKSPACE}:/workspace \
-                            -w /workspace \
+                            -v ${env.WORKSPACE}:${env.WORKSPACE} \
+                            -w ${env.WORKSPACE} \
                             aquasec/trivy image \
                             --timeout 30m \
                             --skip-db-update=false \
                             --scanners vuln \
                             --severity HIGH,CRITICAL \
                             --format json \
-                            -o /workspace/trivy-report.json \
-                            ${env.ECR_REPO}:${IMAGE_TAG} || echo '{}' > /workspace/trivy-report.json
+                            -o ${env.WORKSPACE}/trivy-report.json \
+                            ${env.ECR_REPO}:${IMAGE_TAG} || echo '{}' > ${env.WORKSPACE}/trivy-report.json
 
-                        echo "📂 Checking for report file..."
-                        ls -lh /workspace
+                        echo "📂 Checking for report file in Jenkins workspace..."
+                        ls -lh ${env.WORKSPACE}
 
                         echo "📦 Tagging and pushing Docker image..."
                         docker tag ${env.ECR_REPO}:${IMAGE_TAG} ${imageFullTag}
@@ -64,7 +64,7 @@ pipeline {
                         """
                     }
 
-                    // Archive report after `script` block
+                    // Archive report
                     archiveArtifacts artifacts: 'trivy-report.json', allowEmptyArchive: true
                 }
             }
