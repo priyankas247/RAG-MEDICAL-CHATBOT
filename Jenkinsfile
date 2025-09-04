@@ -1,12 +1,12 @@
 pipeline {
     agent any
 
-    environment {
-        AWS_REGION   = 'us-east-1'
-        ECR_REPO     = 'my-repo'
-        IMAGE_TAG    = 'latest'
-        SERVICE_NAME = 'llmops-medical-service'
-    }
+    // environment {
+    //     AWS_REGION   = 'us-east-1'
+    //     ECR_REPO     = 'my-repo'
+    //     IMAGE_TAG    = 'latest'
+    //     SERVICE_NAME = 'llmops-medical-service'
+    // }
 
     stages {
         stage('Clone GitHub Repo') {
@@ -23,52 +23,52 @@ pipeline {
             }
         }
 
-        stage('Build, Scan, and Push Docker Image to ECR') {
-            steps {
-                withCredentials([[
-                    $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: 'aws-token'
-                ]]) {
-                    script {
-                        def accountId    = sh(script: "aws sts get-caller-identity --query Account --output text", returnStdout: true).trim()
-                        def ecrUrl       = "${accountId}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.ECR_REPO}"
-                        def imageFullTag = "${ecrUrl}:${IMAGE_TAG}"
+        // stage('Build, Scan, and Push Docker Image to ECR') {
+        //     steps {
+        //         withCredentials([[
+        //             $class: 'AmazonWebServicesCredentialsBinding',
+        //             credentialsId: 'aws-token'
+        //         ]]) {
+        //             script {
+        //                 def accountId    = sh(script: "aws sts get-caller-identity --query Account --output text", returnStdout: true).trim()
+        //                 def ecrUrl       = "${accountId}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.ECR_REPO}"
+        //                 def imageFullTag = "${ecrUrl}:${IMAGE_TAG}"
 
-                        sh """
-                        echo "🔐 Logging into AWS ECR..."
-                        aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ecrUrl}
+        //                 sh """
+        //                 echo "🔐 Logging into AWS ECR..."
+        //                 aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ecrUrl}
 
-                        echo "🐳 Building Docker image..."
-                        docker build -t ${env.ECR_REPO}:${IMAGE_TAG} .
+        //                 echo "🐳 Building Docker image..."
+        //                 docker build -t ${env.ECR_REPO}:${IMAGE_TAG} .
 
-                        echo "🔍 Scanning Docker image with Trivy..."
-                        docker run --rm \
-                            -v /var/run/docker.sock:/var/run/docker.sock \
-                            -v ${env.WORKSPACE}:/workspace \
-                            -w /workspace \
-                            aquasec/trivy image \
-                            --timeout 30m \
-                            --skip-db-update=false \
-                            --scanners vuln \
-                            --severity HIGH,CRITICAL \
-                            --format json \
-                            -o /workspace/trivy-report.json \
-                            ${env.ECR_REPO}:${IMAGE_TAG} || echo '{}' > /workspace/trivy-report.json
+        //                 echo "🔍 Scanning Docker image with Trivy..."
+        //                 docker run --rm \
+        //                     -v /var/run/docker.sock:/var/run/docker.sock \
+        //                     -v ${env.WORKSPACE}:/workspace \
+        //                     -w /workspace \
+        //                     aquasec/trivy image \
+        //                     --timeout 30m \
+        //                     --skip-db-update=false \
+        //                     --scanners vuln \
+        //                     --severity HIGH,CRITICAL \
+        //                     --format json \
+        //                     -o /workspace/trivy-report.json \
+        //                     ${env.ECR_REPO}:${IMAGE_TAG} || echo '{}' > /workspace/trivy-report.json
 
-                        echo "📂 Checking for report file..."
-                        ls -lh /workspace
+        //                 echo "📂 Checking for report file..."
+        //                 ls -lh /workspace
 
-                        echo "📦 Tagging and pushing Docker image..."
-                        docker tag ${env.ECR_REPO}:${IMAGE_TAG} ${imageFullTag}
-                        docker push ${imageFullTag}
-                        """
-                    }
+        //                 echo "📦 Tagging and pushing Docker image..."
+        //                 docker tag ${env.ECR_REPO}:${IMAGE_TAG} ${imageFullTag}
+        //                 docker push ${imageFullTag}
+        //                 """
+        //             }
 
-                    // Archive report after `script` block
-                    archiveArtifacts artifacts: 'trivy-report.json', allowEmptyArchive: true
-                }
-            }
-        }
+        //             // Archive report after `script` block
+        //             archiveArtifacts artifacts: 'trivy-report.json', allowEmptyArchive: true
+        //         }
+        //     }
+        // }
 
         /*
         stage('Deploy to AWS App Runner') {
