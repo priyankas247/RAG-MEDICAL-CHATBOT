@@ -27,18 +27,25 @@ pipeline {
                 def imageFullTag = "${ecrUrl}:${IMAGE_TAG}"
 
                 sh """
+                # Authenticate with ECR
                 aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ecrUrl}
-                docker build -t ${env.ECR_REPO}:${IMAGE_TAG} .
-                
-                # Download Trivy DB to avoid timeouts
+
+                # Build image directly with full ECR tag
+                docker build -t ${imageFullTag} .
+
+                # Optional: also tag as latest (if IMAGE_TAG is not latest already)
+                docker tag ${imageFullTag} ${ecrUrl}:latest
+
+                # Download Trivy DB first
                 trivy image --download-db-only
 
-                # Run scan with timeout, always produce report
-                trivy image --timeout 15m --severity HIGH,CRITICAL --format json -o trivy-report.json ${env.ECR_REPO}:${IMAGE_TAG} \
+                # Scan the built image
+                trivy image --timeout 15m --severity HIGH,CRITICAL --format json -o trivy-report.json ${imageFullTag} \
                 || echo '{}' > trivy-report.json
 
-                docker tag ${env.ECR_REPO}:${IMAGE_TAG} ${imageFullTag}
+                # Push to ECR
                 docker push ${imageFullTag}
+                docker push ${ecrUrl}:latest
                 """
 
                 archiveArtifacts artifacts: 'trivy-report.json', allowEmptyArchive: false
@@ -46,6 +53,7 @@ pipeline {
         }
     }
 }
+
 
 
         //  stage('Deploy to AWS App Runner') {
