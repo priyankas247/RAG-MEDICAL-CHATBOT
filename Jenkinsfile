@@ -11,7 +11,7 @@ pipeline {
     stages {
         stage('Clone GitHub Repo') {
             steps {
-                echo 'Cloning GitHub repo to Jenkins...'
+                echo '📥 Cloning GitHub repo to Jenkins...'
                 checkout scmGit(
                     branches: [[name: '*/main']],
                     extensions: [],
@@ -25,10 +25,7 @@ pipeline {
 
         stage('Build, Scan, and Push Docker Image to ECR') {
             steps {
-                withCredentials([[ 
-                    $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: 'aws-token'
-                ]]) {
+                withAWS(credentials: 'aws-token', region: "${AWS_REGION}") {
                     script {
                         def accountId    = sh(script: "aws sts get-caller-identity --query Account --output text", returnStdout: true).trim()
                         def ecrUrl       = "${accountId}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.ECR_REPO}"
@@ -55,42 +52,37 @@ pipeline {
                             -o ${env.WORKSPACE}/trivy-report.json \
                             ${env.ECR_REPO}:${IMAGE_TAG} || echo '{}' > ${env.WORKSPACE}/trivy-report.json
 
-                        echo "📂 Checking for report file in Jenkins workspace..."
-                        ls -lh ${env.WORKSPACE}
-
                         echo "📦 Tagging and pushing Docker image..."
                         docker tag ${env.ECR_REPO}:${IMAGE_TAG} ${imageFullTag}
                         docker push ${imageFullTag}
                         """
                     }
 
-                    // Archive report
+                    // Archive security scan report
                     archiveArtifacts artifacts: 'trivy-report.json', allowEmptyArchive: true
                 }
             }
         }
 
-        /*
-        stage('Deploy to AWS App Runner') {
-            steps {
-                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-token']]) {
-                    script {
-                        def accountId    = sh(script: "aws sts get-caller-identity --query Account --output text", returnStdout: true).trim()
-                        def ecrUrl       = "${accountId}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.ECR_REPO}"
-                        def imageFullTag = "${ecrUrl}:${IMAGE_TAG}"
+        // stage('Deploy to AWS App Runner') {
+        //     steps {
+        //         withAWS(credentials: 'aws-token', region: "${AWS_REGION}") {
+        //             script {
+        //                 def accountId    = sh(script: "aws sts get-caller-identity --query Account --output text", returnStdout: true).trim()
+        //                 def ecrUrl       = "${accountId}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.ECR_REPO}"
+        //                 def imageFullTag = "${ecrUrl}:${IMAGE_TAG}"
 
-                        echo "🚀 Triggering deployment to AWS App Runner..."
+        //                 echo "🚀 Triggering deployment to AWS App Runner..."
 
-                        sh """
-                        SERVICE_ARN=\$(aws apprunner list-services --query "ServiceSummaryList[?ServiceName=='${SERVICE_NAME}'].ServiceArn" --output text --region ${AWS_REGION})
-                        echo "Found App Runner Service ARN: \$SERVICE_ARN"
+        //                 sh """
+        //                 SERVICE_ARN=\$(aws apprunner list-services --query "ServiceSummaryList[?ServiceName=='${SERVICE_NAME}'].ServiceArn" --output text --region ${AWS_REGION})
+        //                 echo "Found App Runner Service ARN: \$SERVICE_ARN"
 
-                        aws apprunner start-deployment --service-arn \$SERVICE_ARN --region ${AWS_REGION}
-                        """
-                    }
-                }
-            }
-        }
-        */
+        //                 aws apprunner start-deployment --service-arn \$SERVICE_ARN --region ${AWS_REGION}
+        //                 """
+        //             }
+        //         }
+        //     }
+        // }
     }
 }

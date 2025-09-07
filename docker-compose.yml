@@ -1,0 +1,42 @@
+version: "3.9"
+
+services:
+  jenkins:
+    image: jenkins/jenkins:lts-jdk17   # stable Jenkins LTS with Java 17
+    container_name: jenkins-dind
+    restart: unless-stopped
+    privileged: true
+    user: root
+    ports:
+      - "8080:8080"
+      - "50000:50000"
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      DOCKER_HOST: "unix:///var/run/docker.sock"
+      JAVA_OPTS: "-Djenkins.install.runSetupWizard=false"
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: my-repo:latest
+    container_name: llmops-medical-app
+    restart: unless-stopped
+    depends_on:
+      - jenkins
+    ports:
+      - "8000:8000"   # adjust if your app uses another port
+
+  trivy:
+    image: aquasec/trivy:latest
+    container_name: trivy
+    entrypoint: ["sleep", "infinity"]  # keeps it running, Jenkins can exec into it
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./scans:/scans
+
+volumes:
+  jenkins_home:
