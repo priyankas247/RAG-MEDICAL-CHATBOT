@@ -5,6 +5,7 @@ pipeline {
         AWS_REGION = 'us-east-1'
         ECR_REPO = '047719629738.dkr.ecr.us-east-1.amazonaws.com/rag-medical-chatbot'
         IMAGE_TAG = "build-${BUILD_NUMBER}"
+        // SERVICE_NAME = 'rag-medical-app' // required for App Runner
     }
 
     stages {
@@ -33,17 +34,13 @@ pipeline {
                 }
             }
         }
-    }
-}
 
-
+        // Uncomment this when ready to deploy
         // stage('Deploy to AWS App Runner') {
         //     steps {
-        //         withAWS(credentials: 'aws-token', region: "${AWS_REGION}") {
+        //         withAWS(credentials: 'aws-creds-id', region: "${AWS_REGION}") {
         //             script {
-        //                 def accountId    = sh(script: "aws sts get-caller-identity --query Account --output text", returnStdout: true).trim()
-        //                 def ecrUrl       = "${accountId}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.ECR_REPO}"
-        //                 def imageFullTag = "${ecrUrl}:${IMAGE_TAG}"
+        //                 def imageFullTag = "${env.ECR_REPO}:${IMAGE_TAG}"
 
         //                 echo "🚀 Triggering deployment to AWS App Runner..."
 
