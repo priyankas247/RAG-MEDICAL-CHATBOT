@@ -27,7 +27,6 @@ pipeline {
                 }
             }
         }
-    }
 
         stage('Login to AWS ECR') {
             options { timeout(time: 5, unit: 'MINUTES') }
@@ -56,21 +55,20 @@ pipeline {
             }
         }
 
-       stage('Trivy Scan') {
-    steps {
-        sh '''
-            echo "Running Trivy vulnerability scan..."
-            trivy image \
-              --scanners vuln \
-              --timeout 15m \
-              --severity HIGH,CRITICAL \
-              --format json \
-              -o trivy-report.json \
-              $ECR_REPO:$IMAGE_TAG
-        '''
-    }
-}
-
+        stage('Trivy Scan') {
+            steps {
+                sh '''
+                    echo "Running Trivy vulnerability scan..."
+                    trivy image \
+                      --scanners vuln \
+                      --timeout 15m \
+                      --severity HIGH,CRITICAL \
+                      --format json \
+                      -o trivy-report.json \
+                      $ECR_REPO:$IMAGE_TAG
+                '''
+            }
+        }
 
         stage('Push Docker Image to ECR') {
             options { timeout(time: 30, unit: 'MINUTES') }
@@ -90,16 +88,11 @@ pipeline {
             sh 'docker system prune -af --volumes || true'
         }
     }
+}
 
 
 
-
-
-
-
-
-
-        //  stage('Deploy to AWS App Runner') {
+   //  stage('Deploy to AWS App Runner') {
         //     steps {
         //         withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-token']]) {
         //             script {
