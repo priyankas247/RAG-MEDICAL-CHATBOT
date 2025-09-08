@@ -55,19 +55,21 @@ pipeline {
             }
         }
 
-        stage('Trivy Scan (Optional)') {
-            options { timeout(time: 15, unit: 'MINUTES') }
-            steps {
-                sh """
-                    mkdir -p ${TRIVY_CACHE}
-                    trivy image --cache-dir ${TRIVY_CACHE} \
-                                --light \
-                                --timeout 10m \
-                                --severity HIGH,CRITICAL \
-                                --format json -o trivy-report.json ${ECR_REPO}:${IMAGE_TAG} || true
-                """
-            }
-        }
+       stage('Trivy Scan') {
+    steps {
+        sh '''
+            echo "Running Trivy vulnerability scan..."
+            trivy image \
+              --scanners vuln \
+              --timeout 15m \
+              --severity HIGH,CRITICAL \
+              --format json \
+              -o trivy-report.json \
+              $ECR_REPO:$IMAGE_TAG
+        '''
+    }
+}
+
 
         stage('Push Docker Image to ECR') {
             options { timeout(time: 30, unit: 'MINUTES') }
