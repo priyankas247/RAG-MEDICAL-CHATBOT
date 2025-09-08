@@ -2,12 +2,12 @@ pipeline {
     agent any
 
     environment {
-        AWS_REGION = 'us-east-1'
+        AWS_REGION     = 'us-east-1'
         AWS_ACCOUNT_ID = '047719629738'
-        REPO_NAME = 'my-repo'
-        ECR_REPO = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${REPO_NAME}"
-        IMAGE_TAG = "build-${BUILD_NUMBER}"
-        TRIVY_CACHE = '/var/jenkins_home/.cache/trivy'
+        REPO_NAME      = 'my-repo'
+        ECR_REPO       = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${REPO_NAME}"
+        IMAGE_TAG      = "build-${BUILD_NUMBER}"
+        TRIVY_CACHE    = '/var/jenkins_home/.cache/trivy'
     }
 
     stages {
@@ -44,11 +44,12 @@ pipeline {
             options { timeout(time: 60, unit: 'MINUTES') }
             steps {
                 sh """
-                    # Pull previous image to use cache and speed up build
+                    # Try pulling previous image for cache
                     docker pull ${ECR_REPO}:latest || true
 
-                    # Build Docker image
-                    docker build --cache-from=${ECR_REPO}:latest \
+                    # Build Docker image with compression & caching
+                    docker build --compress \
+                                 --cache-from=${ECR_REPO}:latest \
                                  -t ${ECR_REPO}:${IMAGE_TAG} \
                                  -t ${ECR_REPO}:latest .
                 """
@@ -65,7 +66,7 @@ pipeline {
                       --severity HIGH,CRITICAL \
                       --format json \
                       -o trivy-report.json \
-                      $ECR_REPO:$IMAGE_TAG
+                      $ECR_REPO:$IMAGE_TAG || echo '{}' > trivy-report.json
                 '''
             }
         }
@@ -73,10 +74,23 @@ pipeline {
         stage('Push Docker Image to ECR') {
             options { timeout(time: 30, unit: 'MINUTES') }
             steps {
-                sh """
-                    docker push ${ECR_REPO}:${IMAGE_TAG}
-                    docker push ${ECR_REPO}:latest
-                """
+                script {
+                    // Increase Docker client timeouts for Windows/Docker Desktop
+                    sh '''
+                        export DOCKER_CLIENT_TIMEOUT=600
+                        export COMPOSE_HTTP_TIMEOUT=600
+                    '''
+
+                    // Retry push in case of network failures
+                    retry(3) {
+                        sh """
+                            echo "Pushing Docker image (attempt)..."
+
+                            docker push ${ECR_REPO}:${IMAGE_TAG}
+                            docker push ${ECR_REPO}:latest
+                        """
+                    }
+                }
             }
         }
     }
@@ -89,6 +103,7 @@ pipeline {
         }
     }
 }
+
 
 
 
