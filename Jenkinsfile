@@ -27,6 +27,7 @@ pipeline {
                 }
             }
         }
+    }
 
 //         stage('Login to AWS ECR') {
 //             options { timeout(time: 5, unit: 'MINUTES') }
