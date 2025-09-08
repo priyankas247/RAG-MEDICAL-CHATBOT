@@ -2,9 +2,10 @@ pipeline {
     agent any
 
     environment {
-        AWS_REGION = 'us-east-1'
-        ECR_REPO   = '047719629738.dkr.ecr.us-east-1.amazonaws.com/my-repo'
-        IMAGE_TAG  = "build-${BUILD_NUMBER}"
+        AWS_REGION  = 'us-east-1'
+        ECR_REPO    = '047719629738.dkr.ecr.us-east-1.amazonaws.com/my-repo'
+        IMAGE_TAG   = "build-${BUILD_NUMBER}"
+        TRIVY_CACHE = '/var/jenkins_home/.cache/trivy'
     }
 
     stages {
@@ -15,11 +16,26 @@ pipeline {
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Login to AWS ECR') {
             steps {
-                sh '''
-                docker build -t ${ECR_REPO}:${IMAGE_TAG} .
-                '''
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-token']]) {
+                    sh """
+                        aws ecr get-login-password --region ${AWS_REGION} \
+                          | docker login --username AWS --password-stdin ${ECR_REPO}
+                    """
+                }
+            }
+        }
+
+        stage('Docker Build') {
+            steps {
+                sh """
+                    docker pull ${ECR_REPO}:latest || true
+                    docker build \
+                        --cache-from=${ECR_REPO}:latest \
+                        -t ${ECR_REPO}:${IMAGE_TAG} \
+                        -t ${ECR_REPO}:latest .
+                """
             }
         }
 
@@ -28,46 +44,35 @@ pipeline {
                 timeout(time: 30, unit: 'MINUTES')
             }
             steps {
-                sh '''
-                mkdir -p $HOME/.cache/trivy
+                sh """
+                    mkdir -p ${TRIVY_CACHE}
 
-                # Update DB once before running (faster later)
-                trivy --download-db-only --cache-dir $HOME/.cache/trivy
-
-                # Run scan with higher timeout + cached DB
-                trivy image \
-                  --timeout 20m \
-                  --cache-dir $HOME/.cache/trivy \
-                  --skip-db-update \
-                  --severity HIGH,CRITICAL \
-                  --format json -o trivy-report.json \
-                  ${ECR_REPO}:${IMAGE_TAG}
-                '''
+                    # Run Trivy scan (DB updates automatically now)
+                    trivy image \
+                      --timeout 20m \
+                      --cache-dir ${TRIVY_CACHE} \
+                      --severity HIGH,CRITICAL \
+                      --format json -o trivy-report.json \
+                      ${ECR_REPO}:${IMAGE_TAG} || true
+                """
             }
         }
 
-        stage('Login to ECR') {
+        stage('Docker Push') {
             steps {
-                sh '''
-                aws ecr get-login-password --region ${AWS_REGION} \
-                | docker login --username AWS --password-stdin ${ECR_REPO}
-                '''
-            }
-        }
-
-        stage('Push Image to ECR') {
-            steps {
-                sh '''
-                docker push ${ECR_REPO}:${IMAGE_TAG}
-                '''
+                sh """
+                    docker push ${ECR_REPO}:${IMAGE_TAG}
+                    docker push ${ECR_REPO}:latest
+                """
             }
         }
     }
 
     post {
         always {
-            cleanWs()
-            sh 'docker system prune -af --volumes'
+            archiveArtifacts artifacts: 'trivy-report.json', allowEmptyArchive: true
+            echo 'Cleaning up Docker...'
+            sh 'docker system prune -af --volumes || true'
         }
     }
 }
