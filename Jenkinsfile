@@ -2,10 +2,9 @@ pipeline {
     agent any
 
     environment {
-        AWS_REGION  = 'us-east-1'
-        ECR_REPO    = '047719629738.dkr.ecr.us-east-1.amazonaws.com/my-repo'
-        IMAGE_TAG   = "build-${BUILD_NUMBER}"
-        TRIVY_CACHE = '/var/jenkins_home/.cache/trivy'
+        AWS_REGION = 'us-east-1'
+        ECR_REPO = '047719629738.dkr.ecr.us-east-1.amazonaws.com/my-repo'
+        IMAGE_TAG = "build-${BUILD_NUMBER}"
     }
 
     stages {
@@ -16,66 +15,35 @@ pipeline {
             }
         }
 
-        stage('Login to AWS ECR') {
+        stage('Login to ECR') {
             steps {
-                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-token']]) {
+                script {
                     sh """
-                        aws ecr get-login-password --region ${AWS_REGION} \
-                          | docker login --username AWS --password-stdin ${ECR_REPO}
+                        aws ecr get-login-password --region $AWS_REGION \
+                        | docker login --username AWS --password-stdin $ECR_REPO
                     """
                 }
             }
         }
 
-        stage('Docker Build') {
+        stage('Build Docker Image') {
             steps {
-                sh """
-                    docker pull ${ECR_REPO}:latest || true
-                    docker build \
-                        --cache-from=${ECR_REPO}:latest \
-                        -t ${ECR_REPO}:${IMAGE_TAG} \
-                        -t ${ECR_REPO}:latest .
-                """
+                script {
+                    sh "docker build -t ${ECR_REPO}:${IMAGE_TAG} ."
+                }
             }
         }
 
-        stage('Trivy Scan') {
-            options {
-                timeout(time: 30, unit: 'MINUTES')
-            }
+        stage('Push to ECR') {
             steps {
-                sh """
-                    mkdir -p ${TRIVY_CACHE}
-
-                    # Run Trivy scan (DB updates automatically now)
-                    trivy image \
-                      --timeout 20m \
-                      --cache-dir ${TRIVY_CACHE} \
-                      --severity HIGH,CRITICAL \
-                      --format json -o trivy-report.json \
-                      ${ECR_REPO}:${IMAGE_TAG} || true
-                """
+                script {
+                    sh "docker push ${ECR_REPO}:${IMAGE_TAG}"
+                }
             }
-        }
-
-        stage('Docker Push') {
-            steps {
-                sh """
-                    docker push ${ECR_REPO}:${IMAGE_TAG}
-                    docker push ${ECR_REPO}:latest
-                """
-            }
-        }
-    }
-
-    post {
-        always {
-            archiveArtifacts artifacts: 'trivy-report.json', allowEmptyArchive: true
-            echo 'Cleaning up Docker...'
-            sh 'docker system prune -af --volumes || true'
         }
     }
 }
+
 
 
 
