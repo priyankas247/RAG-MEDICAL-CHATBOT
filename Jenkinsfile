@@ -7,6 +7,7 @@ pipeline {
         REPO_NAME = 'my-repo'
         ECR_REPO = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${REPO_NAME}"
         IMAGE_TAG = "build-${BUILD_NUMBER}"
+        TRIVY_CACHE = '/var/jenkins_home/.cache/trivy'
     }
 
     stages {
@@ -40,16 +41,35 @@ pipeline {
         }
 
         stage('Build Docker Image') {
-            options { timeout(time: 20, unit: 'MINUTES') }
+            options { timeout(time: 60, unit: 'MINUTES') }
             steps {
                 sh """
-                    docker build -t ${ECR_REPO}:${IMAGE_TAG} \
+                    # Pull previous image to use cache and speed up build
+                    docker pull ${ECR_REPO}:latest || true
+
+                    # Build Docker image
+                    docker build --cache-from=${ECR_REPO}:latest \
+                                 -t ${ECR_REPO}:${IMAGE_TAG} \
                                  -t ${ECR_REPO}:latest .
                 """
             }
         }
 
-        stage('Push to ECR') {
+        stage('Trivy Scan (Optional)') {
+            options { timeout(time: 15, unit: 'MINUTES') }
+            steps {
+                sh """
+                    mkdir -p ${TRIVY_CACHE}
+                    trivy image --cache-dir ${TRIVY_CACHE} \
+                                --light \
+                                --timeout 10m \
+                                --severity HIGH,CRITICAL \
+                                --format json -o trivy-report.json ${ECR_REPO}:${IMAGE_TAG} || true
+                """
+            }
+        }
+
+        stage('Push Docker Image to ECR') {
             options { timeout(time: 30, unit: 'MINUTES') }
             steps {
                 sh """
@@ -62,7 +82,8 @@ pipeline {
 
     post {
         always {
-            echo 'Cleaning up Docker...'
+            echo 'Archiving Trivy report and cleaning up Docker...'
+            archiveArtifacts artifacts: 'trivy-report.json', allowEmptyArchive: true
             sh 'docker system prune -af --volumes || true'
         }
     }
