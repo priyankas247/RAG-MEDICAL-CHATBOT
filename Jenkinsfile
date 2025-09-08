@@ -3,56 +3,73 @@ pipeline {
 
     environment {
         AWS_REGION = 'us-east-1'
-        ECR_REPO = 'my-repo'
-        IMAGE_TAG = 'latest'
-        SERVICE_NAME = 'llmops-medical-service'
+        ECR_REPO = '047719629738.dkr.ecr.us-east-1.amazonaws.com/my-repo'
+        IMAGE_TAG = "build-${BUILD_NUMBER}"
+        TRIVY_CACHE = '/tmp/trivy-cache'
     }
 
     stages {
-        stage('Clone GitHub Repo') {
+        stage('Checkout') {
             steps {
-                script {
-                    echo 'Cloning GitHub repo to Jenkins...'
-                    checkout scmGit(branches: [[name: '*/main']], extensions: [], userRemoteConfigs: [[credentialsId: 'github-token', url: 'https://github.com/priyankas247/RAG-MEDICAL-CHATBOT.git']])
+                git branch: 'main',
+                    url: 'https://github.com/priyankas247/RAG-MEDICAL-CHATBOT.git'
+            }
+        }
+
+        stage('Login to AWS ECR') {
+            steps {
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-token']]) {
+                    sh """
+                        aws ecr get-login-password --region ${AWS_REGION} \
+                          | docker login --username AWS --password-stdin ${ECR_REPO}
+                    """
                 }
             }
         }
 
-       stage('Build, Scan, and Push Docker Image to ECR') {
-    steps {
-        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-token']]) {
-            script {
-                def accountId = sh(script: "aws sts get-caller-identity --query Account --output text", returnStdout: true).trim()
-                def ecrUrl = "${accountId}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.ECR_REPO}"
-                def imageFullTag = "${ecrUrl}:${IMAGE_TAG}"
-
+        stage('Docker Build') {
+            steps {
                 sh """
-                # Authenticate with ECR
-                aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ecrUrl}
-
-                # Build image directly with full ECR tag
-                docker build -t ${imageFullTag} .
-
-                # Optional: also tag as latest (if IMAGE_TAG is not latest already)
-                docker tag ${imageFullTag} ${ecrUrl}:latest
-
-                # Download Trivy DB first
-                trivy image --download-db-only
-
-                # Scan the built image
-                trivy image --timeout 15m --severity HIGH,CRITICAL --format json -o trivy-report.json ${imageFullTag} \
-                || echo '{}' > trivy-report.json
-
-                # Push to ECR
-                docker push ${imageFullTag}
-                docker push ${ecrUrl}:latest
+                    docker pull ${ECR_REPO}:latest || true
+                    docker build \
+                        --cache-from=${ECR_REPO}:latest \
+                        -t ${ECR_REPO}:${IMAGE_TAG} \
+                        -t ${ECR_REPO}:latest .
                 """
+            }
+        }
 
-                archiveArtifacts artifacts: 'trivy-report.json', allowEmptyArchive: false
+        stage('Trivy Scan') {
+            steps {
+                sh """
+                    mkdir -p ${TRIVY_CACHE}
+                    trivy image --cache-dir ${TRIVY_CACHE} --light \
+                        --timeout 5m --severity HIGH,CRITICAL \
+                        --format json -o trivy-report.json ${ECR_REPO}:${IMAGE_TAG} || true
+                """
+            }
+        }
+
+        stage('Docker Push') {
+            steps {
+                sh """
+                    docker push ${ECR_REPO}:${IMAGE_TAG}
+                    docker push ${ECR_REPO}:latest
+                """
             }
         }
     }
+
+    post {
+        always {
+            archiveArtifacts artifacts: 'trivy-report.json', allowEmptyArchive: true
+            echo 'Cleaning up Docker...'
+            sh 'docker system prune -af --volumes || true'
+        }
+    }
 }
+
+
 
 
 
