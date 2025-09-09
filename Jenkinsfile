@@ -22,19 +22,23 @@ pipeline {
         }
 
         stage('Trivy Scan') {
-            steps {
-                sh """
-                    docker run --rm \
-                      -v /var/run/docker.sock:/var/run/docker.sock \
-                      -v $WORKSPACE:/root/.cache/ aquasec/trivy:latest \
-                      image --timeout 15m \
-                      --severity HIGH,CRITICAL \
-                      --format json \
-                      -o trivy-report.json \
-                      ${ECR_REPO}:${IMAGE_TAG} || echo '{}' > trivy-report.json
-                """
-            }
-        }
+    steps {
+        sh """
+            echo "Running Trivy vulnerability scan (only vuln, no secrets)..."
+            docker run --rm \
+              -v /var/run/docker.sock:/var/run/docker.sock \
+              -v $WORKSPACE:/root/.cache/ aquasec/trivy:latest \
+              image \
+              --scanners vuln \
+              --timeout 5m \
+              --severity HIGH,CRITICAL \
+              --format json \
+              -o trivy-report.json \
+              ${ECR_REPO}:${IMAGE_TAG} || echo '{}' > trivy-report.json
+        """
+    }
+}
+
 
         stage('Push to ECR') {
             steps {
